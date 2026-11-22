@@ -84,3 +84,58 @@ function renderExtras(){
 
 initExtras();
 start().catch(e=>{show('setup',true);$('setup').append(document.createTextNode(' Erro de conexão: '+e.message))});
+
+
+
+// V7 - Exclusão segura de clientes
+document.getElementById('clientDetailCard')
+  .addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-delete-client]');
+    if (!btn) return;
+
+    const id = btn.dataset.deleteClient;
+    const cliente = db.clients.find(c => c.id === id);
+    if (!cliente) return;
+
+    if (clientPackages(id).length > 0) {
+      msg('Este cliente possui pacotes registrados e não pode ser excluído.', true);
+      return;
+    }
+
+    if (!confirm(`Deseja excluir o cliente ${cliente.name}?`)) return;
+
+    await run(async () => {
+      const { data, error } = await sb
+        .from('clients')
+        .delete()
+        .eq('id', id)
+        .select('id');
+
+      if (error) throw error;
+      if (!data?.length) throw Error('Exclusão não autorizada pelo banco de dados.');
+
+      selectedClientId = '';
+      msg('Cliente excluído com sucesso!');
+    });
+  });
+
+const renderClientCardV6 = renderClientCard;
+
+renderClientCard = function () {
+  renderClientCardV6();
+
+  const panel = document.getElementById('clientDetailCard');
+  const cliente = db.clients.find(c => c.id === selectedClientId);
+
+  if (!cliente || clientPackages(cliente.id).length > 0) return;
+
+  const actions = panel.querySelector('.actions');
+  if (!actions) return;
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'danger small-action';
+  button.textContent = 'Excluir cliente';
+  button.dataset.deleteClient = cliente.id;
+  actions.appendChild(button);
+};
