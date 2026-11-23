@@ -12,10 +12,10 @@ const clientName=id=>db.clients.find(c=>c.id===id)?.name||'Cliente excluído';
 const pkgFor=id=>db.packages.find(p=>p.id===id);
 const option=(el,items,placeholder)=>{const old=el.value;el.innerHTML=`<option value="">${esc(placeholder)}</option>`+items.map(x=>`<option value="${esc(x.id)}">${esc(x.label)}</option>`).join('');if(items.some(x=>x.id===old))el.value=old};
 function render(){renderExtras();const active=db.packages.filter(p=>p.remaining_cuts+p.remaining_beards>0);$('active').textContent=active.length;$('renew').textContent=active.filter(p=>p.remaining_cuts+p.remaining_beards===1).length;$('sales').textContent=money(db.packages.reduce((n,p)=>n+p.price_cents,0)/100);
- const people=db.clients.map(c=>({id:c.id,label:c.name+' · '+c.phone}));option($('attClient'),people,'Selecione um cliente');option($('saleClient'),people,'Selecione um cliente');
+ const people=db.clients.filter(c=>!c.archived_at).map(c=>({id:c.id,label:c.name+' · '+c.phone}));option($('attClient'),people,'Selecione um cliente');option($('saleClient'),people,'Selecione um cliente');
  const chosen=$('attClient').value,ps=activeFor(chosen),p=ps[0],total=totalsFor(chosen);$('current').innerHTML=!chosen?'':p?`<div class="credits"><div class="credit"><div class="muted">Cortes restantes</div><strong>${total.cuts}</strong></div><div class="credit"><div class="muted">Barbas restantes</div><strong>${total.beards}</strong></div></div><span class="tag">${ps.length} pacote(s) com saldo · Ativo</span>`:'<div class="notice">Este cliente não tem pacote ativo.</div>';
  $('recent').innerHTML=db.visits.filter(v=>!v.cancelled_at).slice(0,12).map(v=>`<div class="item"><b>${esc(clientName(pkgFor(v.package_id)?.client_id))}</b> · ${esc(v.service)}<div class="muted">${date(v.created_at)}</div></div>`).join('')||'<p class="muted">Nenhum atendimento registrado.</p>';
- const query=$('clientSearch').value.toLocaleLowerCase();$('clientList').innerHTML=db.clients.filter(c=>(c.name+' '+c.phone).toLocaleLowerCase().includes(query)).map(c=>`<div class="item"><b>${esc(c.name)}</b><div class="muted">${esc(c.phone)}</div><button type="button" class="small-action secondary" data-client-detail="${esc(c.id)}">Ver detalhes</button></div>`).join('')||'<p class="muted">Nenhum cliente encontrado.</p>';renderClientCard();
+ const query=$('clientSearch').value.toLocaleLowerCase();$('clientList').innerHTML=db.clients.filter(c=>(c.name+' '+c.phone).toLocaleLowerCase().includes(query)).map(c=>`<div class="item"><b>${esc(c.name)}</b>${c.archived_at?'<span class="tag">Arquivado</span>':''}<div class="muted">${esc(c.phone)}</div><button type="button" class="small-action secondary" data-client-detail="${esc(c.id)}">Ver detalhes</button></div>`).join('')||'<p class="muted">Nenhum cliente encontrado.</p>';renderClientCard();
  $('packageList').innerHTML=db.packages.map(p=>`<div class="item"><b>${esc(clientName(p.client_id))} · ${esc(p.name)}</b><div class="muted">${p.remaining_cuts} cortes · ${p.remaining_beards} barbas restantes · ${money(p.price_cents/100)}</div>${p.remaining_cuts+p.remaining_beards===0?'<span class="muted">Esgotado</span>':''}</div>`).join('')||'<p class="muted">Nenhum pacote vendido.</p>';
  $('historyList').innerHTML=db.visits.map(v=>`<div class="item"><b>${esc(clientName(pkgFor(v.package_id)?.client_id))}</b> · ${esc(v.service)} · ${esc(pkgFor(v.package_id)?.name||'Pacote')}<div class="muted">${date(v.created_at)} ${v.cancelled_at?'· CANCELADO em '+date(v.cancelled_at):''}</div>${v.cancelled_at?'':`<button class="danger" data-cancel="${esc(v.id)}">Cancelar atendimento</button>`}</div>`).join('')||'<p class="muted">Nenhum atendimento registrado.</p>';
  const t=types[$('packageType').value];show('customFields',$('packageType').value==='Personalizado');$('packageDetail').textContent=t?`${t[0]} cortes + ${t[1]} barbas · ${money(t[2])}`:'Defina as condições exclusivas deste cliente.';
@@ -73,7 +73,13 @@ function renderExtras(){
  if(!document.getElementById('dashboard'))return;
  const m=currentMonth(),monthlyPackages=db.packages.filter(p=>monthKey(p.created_at)===m),monthlyVisits=db.visits.filter(v=>!v.cancelled_at&&monthKey(v.created_at)===m);
  $('dashClients').textContent=db.clients.length;$('dashVisits').textContent=monthlyVisits.length;$('dashPackages').textContent=monthlyPackages.length;$('dashRevenue').textContent=money(monthlyPackages.reduce((n,p)=>n+(Number(p.price_cents)||0),0)/100);
- const renew=db.clients.filter(c=>{const t=totalsFor(c.id);return t.cuts+t.beards===1});
+ 
+const renew=db.clients.filter(c=>{
+  if(c.archived_at) return false;
+  const t=totalsFor(c.id);
+  return t.cuts+t.beards===1;
+});
+
  $('dashRenew').innerHTML=renew.map(c=>`<div class="item"><b>${esc(c.name)}</b><div class="muted">${esc(c.phone)} · 1 crédito restante</div><button class="small-action" data-wa="${esc(c.id)}">Enviar WhatsApp</button></div>`).join('')||'<p class="muted">Nenhum cliente com apenas um crédito.</p>';
  $('dashRecent').innerHTML=db.visits.filter(v=>!v.cancelled_at).slice(0,8).map(v=>`<div class="item"><b>${esc(clientName(pkgFor(v.package_id)?.client_id))}</b> · ${esc(v.service)}<div class="muted">${date(v.created_at)}</div></div>`).join('')||'<p class="muted">Nenhum atendimento registrado.</p>';
  const sel=$('historyClient'),previous=sel.value;sel.innerHTML='<option value="">Selecione um cliente</option>'+db.clients.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');if(db.clients.some(c=>c.id===previous))sel.value=previous;
@@ -87,55 +93,101 @@ start().catch(e=>{show('setup',true);$('setup').append(document.createTextNode('
 
 
 
-// V7 - Exclusão segura de clientes
-document.getElementById('clientDetailCard')
-  .addEventListener('click', async (e) => {
-    const btn = e.target.closest('[data-delete-client]');
-    if (!btn) return;
 
-    const id = btn.dataset.deleteClient;
-    const cliente = db.clients.find(c => c.id === id);
-    if (!cliente) return;
+// V8 - Arquivar, restaurar e excluir clientes
 
-    if (clientPackages(id).length > 0) {
-      msg('Este cliente possui pacotes registrados e não pode ser excluído.', true);
-      return;
-    }
-
-    if (!confirm(`Deseja excluir o cliente ${cliente.name}?`)) return;
-
-    await run(async () => {
-      const { data, error } = await sb
-        .from('clients')
-        .delete()
-        .eq('id', id)
-        .select('id');
-
-      if (error) throw error;
-      if (!data?.length) throw Error('Exclusão não autorizada pelo banco de dados.');
-
-      selectedClientId = '';
-      msg('Cliente excluído com sucesso!');
-    });
-  });
-
-const renderClientCardV6 = renderClientCard;
+const renderClientCardOriginal = renderClientCard;
 
 renderClientCard = function () {
-  renderClientCardV6();
+  renderClientCardOriginal();
 
-  const panel = document.getElementById('clientDetailCard');
+  const panel = $('clientDetailCard');
   const cliente = db.clients.find(c => c.id === selectedClientId);
-
-  if (!cliente || clientPackages(cliente.id).length > 0) return;
+  if (!cliente) return;
 
   const actions = panel.querySelector('.actions');
   if (!actions) return;
 
-  const button = document.createElement('button');
-  button.type = 'button';
-  button.className = 'danger small-action';
-  button.textContent = 'Excluir cliente';
-  button.dataset.deleteClient = cliente.id;
-  actions.appendChild(button);
+  const arquivar = document.createElement('button');
+  arquivar.type = 'button';
+  arquivar.className = 'small-action secondary';
+  arquivar.dataset.archiveClient = cliente.id;
+  arquivar.textContent = cliente.archived_at
+    ? 'Restaurar cliente'
+    : 'Arquivar cliente';
+
+  const excluir = document.createElement('button');
+  excluir.type = 'button';
+  excluir.className = 'small-action danger';
+  excluir.dataset.deleteClient = cliente.id;
+  excluir.textContent = 'Excluir definitivamente';
+
+  actions.append(arquivar, excluir);
 };
+
+$('clientDetailCard').addEventListener('click', e => {
+  const archive = e.target.closest('[data-archive-client]');
+  const del = e.target.closest('[data-delete-client]');
+  if (!archive && !del) return;
+
+  const id = (archive || del).dataset[
+    archive ? 'archiveClient' : 'deleteClient'
+  ];
+  const cliente = db.clients.find(c => c.id === id);
+  if (!cliente) return;
+
+  if (archive) {
+    const restaurar = Boolean(cliente.archived_at);
+
+    if (!confirm(
+      `${restaurar ? 'Restaurar' : 'Arquivar'} ${cliente.name}?`
+    )) return;
+
+    run(async () => {
+      const { data, error } = await sb.from('clients')
+        .update({
+          archived_at: restaurar ? null : new Date().toISOString()
+        })
+       
+.eq('id', id)
+.eq('owner_id', (await sb.auth.getUser()).data.user?.id ?? '')
+.select('id');
+
+
+      if (error) throw error;
+      if (!data?.length) throw Error('Operação não autorizada.');
+
+      msg(restaurar ? 'Cliente restaurado!' : 'Cliente arquivado!');
+    });
+    return;
+  }
+
+  const pacotes = clientPackages(id).length;
+  const atendimentos = clientVisits(id).length;
+
+  const aviso = `Excluir definitivamente ${cliente.name}?\n\n` +
+    `${pacotes} pacote(s) e ${atendimentos} atendimento(s) serão apagados.\n\n` +
+    'Esta ação não pode ser desfeita.';
+
+  if (!confirm(aviso)) return;
+
+  const confirmacao = prompt(
+    'Para confirmar a exclusão definitiva, digite EXCLUIR:'
+  );
+  if (confirmacao !== 'EXCLUIR') {
+    msg('Exclusão cancelada.');
+    return;
+  }
+
+  run(async () => {
+    const { error } = await sb.rpc('delete_client_completely', {
+      p_client: id
+    });
+
+    if (error) throw error;
+
+    selectedClientId = '';
+    msg('Cliente e registros vinculados excluídos definitivamente.');
+  });
+});
+
